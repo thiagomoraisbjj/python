@@ -1,0 +1,231 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.mx/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String
+  cnpj        String?
+  address     String?
+  ownerId     String
+  plan        String   @default("basic")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User     @relation("TenantOwner", fields: [ownerId], references: [id])
+  users       User[]
+  students    Student[]
+  instructors Instructor[]
+  plans       FinancialPlan[]
+  trainings   TrainingSession[]
+  billings    StudentBilling[]
+
+  @@map("tenants")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  role      Role      @default(STUDENT)
+  tenantId  String?
+  createdAt DateTime  @default(now())
+
+  tenant    Tenant?   @relation("TenantOwner", fields: [tenantId], references: [id])
+  tenantUsers Tenant[] @relation("TenantUsers")
+  students  Student[]
+
+  @@map("users")
+}
+
+model Student {
+  id                   String         @id @default(cuid())
+  tenantId             String
+  name                 String
+  age                  Int
+  weight               Float
+  category             String
+  currentBelt          Belt
+  startDate            DateTime
+  lastGraduationDate   DateTime?
+  status               StudentStatus  @default(ACTIVE)
+  evolutionScore       Float?         @default(0)
+  xp                   Int            @default(0)
+  financialPlanId      String?
+
+  tenant               Tenant         @relation(fields: [tenantId], references: [id])
+  user                 User?
+  attendances          Attendance[]
+  checklists           StudentChecklist[]
+  billings             StudentBilling[]
+
+  @@map("students")
+}
+
+model Instructor {
+  id       String  @id @default(cuid())
+  tenantId String
+  name     String
+  belt     Belt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  trainings TrainingSession[]
+
+  @@map("instructors")
+}
+
+model TrainingSession {
+  id          String      @id @default(cuid())
+  tenantId    String
+  date        DateTime
+  type        TrainingType
+  instructorId String
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  instructor Instructor  @relation(fields: [instructorId], references: [id])
+  attendances Attendance[]
+
+  @@map("training_sessions")
+}
+
+model Attendance {
+  id               String         @id @default(cuid())
+  studentId        String
+  trainingSessionId String
+
+  student         Student       @relation(fields: [studentId], references: [id])
+  trainingSession TrainingSession @relation(fields: [trainingSessionId], references: [id])
+
+  @@map("attendances")
+}
+
+model ChecklistItem {
+  id     String @id @default(cuid())
+  beltFrom Belt
+  beltTo   Belt
+  name      String
+  requiredCount Int
+  description String?
+
+  studentChecklists StudentChecklist[]
+
+  @@map("checklist_items")
+}
+
+model StudentChecklist {
+  id           String       @id @default(cuid())
+  studentId    String
+  checklistItemId String
+  progress     Int          @default(0)
+  status       ChecklistStatus @default(NOT_STARTED)
+
+  student      Student      @relation(fields: [studentId], references: [id])
+  checklistItem ChecklistItem @relation(fields: [checklistItemId], references: [id])
+
+  @@unique([studentId, checklistItemId])
+  @@map("student_checklists")
+}
+
+model FinancialPlan {
+  id      String   @id @default(cuid())
+  tenantId String
+  name    String
+  value   Float
+  frequency BillingFrequency
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  billings StudentBilling[]
+
+  @@map("financial_plans")
+}
+
+model StudentBilling {
+  id            String   @id @default(cuid())
+  studentId     String
+  planId        String
+  dueDate       DateTime
+  status        BillingStatus @default(PENDING)
+  paymentLink   String?
+  transactionId String?
+  amount        Float
+
+  student Student      @relation(fields: [studentId], references: [id])
+  plan    FinancialPlan @relation(fields: [planId], references: [id])
+  tenant   Tenant       @relation(fields: [studentId], references: [id]) // Derived from student
+
+  @@map("student_billings")
+}
+
+model Payment {
+  id              String       @id @default(cuid())
+  studentBillingId String
+  amount          Float
+  status          PaymentStatus
+  method          String?
+  mercadopagoId   String?
+  paidAt          DateTime?
+
+  billing StudentBilling @relation(fields: [studentBillingId], references: [id])
+
+  @@map("payments")
+}
+
+enum Role {
+  PLATFORM_ADMIN
+  ACADEMY_OWNER
+  INSTRUCTOR
+  STUDENT
+}
+
+enum Belt {
+  WHITE
+  BLUE
+  PURPLE
+  BROWN
+  BLACK
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TrainingType {
+  GI
+  NOGI
+}
+
+enum ChecklistStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum BillingFrequency {
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+}
+
+enum BillingStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
